@@ -13,6 +13,8 @@
 | 3 | 料金プランが順位に影響しないランキング（ベイズ平均） | [`src/ranking.ts`](src/ranking.ts) | [`__tests__/ranking.test.ts`](__tests__/ranking.test.ts) |
 | 4 | 障害時に空の結果をキャッシュしない仕組み | [`src/last-good-cache.ts`](src/last-good-cache.ts) | [`__tests__/last-good-cache.test.ts`](__tests__/last-good-cache.test.ts) |
 
+1・2 は本番のコードを題材に合わせて調整したもの、3・4 は新しく書いたものです（ベイズ平均による補正は、このサンプルで加えたものです）。
+
 設計の意図と状態遷移の図は [docs/design.md](docs/design.md) にあります。
 
 ### 設計のポイント
