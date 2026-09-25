@@ -27,14 +27,18 @@ export function isValidLatLng(lat: number, lng: number): boolean {
   );
 }
 
-/** 数値が許可半径かを判定する型ガード（as キャスト無しで NearRadiusKm に絞る）。 */
+/** 数値が許可半径かを判定する型ガード（as を使わずに NearRadiusKm に絞る）。 */
 function isNearRadiusKm(n: number): n is NearRadiusKm {
   return (NEAR_RADIUS_OPTIONS as readonly number[]).includes(n);
 }
 
-/** radius 入力を許可値に正規化。許可値外・非数値・空は DEFAULT_RADIUS_KM にフォールバック。 */
+// 半径の文字列は 10 進の整数だけを数値として扱う（座標と同じく、Number() の暗黙変換を信用しない）。
+// '0x3'・'3e0'・' 5 ' のような表記は、許可値に化けても受け付けずに既定値へ倒す。
+const RADIUS_RE = /^\d+$/;
+
+/** radius 入力を許可値に正規化。許可値外・非数値・空・10進整数以外の表記は DEFAULT_RADIUS_KM にフォールバック。 */
 export function normalizeRadiusKm(raw: string | number | null | undefined): NearRadiusKm {
-  const n = typeof raw === 'number' ? raw : raw == null || raw === '' ? NaN : Number(raw);
+  const n = typeof raw === 'number' ? raw : raw != null && RADIUS_RE.test(raw) ? Number(raw) : NaN;
   return isNearRadiusKm(n) ? n : DEFAULT_RADIUS_KM;
 }
 
@@ -42,16 +46,23 @@ export function normalizeRadiusKm(raw: string | number | null | undefined): Near
 // 16進(0x..)・指数表記(1e1) を弾く＝navigator.geolocation 由来の通常の10進座標のみを受理する。
 const DECIMAL_RE = /^[+-]?(?:\d+\.?\d*|\.\d+)$/;
 
+// near パラメータの長さの上限。通常の座標（"-90.000000,-180.000000" で 23 文字）には十分で、
+// 極端に長い入力を正規表現や Number() に渡す前に弾く。
+const MAX_NEAR_LENGTH = 64;
+
 /**
  * URL パラメータ（near="lat,lng" / radius="km"）を NearQuery にパースする。
  * near が無い / "lat,lng" 形式でない / 座標が範囲外 → null（near 検索なし＝通常検索にフォールバック）。
  * radius は normalizeRadiusKm で許可値に丸める（不正でも near 自体は成立させ既定半径を使う）。
+ *
+ * 引数は `URLSearchParams.get()` の戻り値（string | null）を想定している。`?near=a&near=b` を
+ * 配列にするクエリパーサーを使う場合は、呼び出し側で1つの文字列に絞ってから渡す。
  */
 export function parseNearParam(
   near: string | null | undefined,
   radius: string | null | undefined,
 ): NearQuery | null {
-  if (!near) return null;
+  if (!near || near.length > MAX_NEAR_LENGTH) return null;
   const parts = near.split(',');
   if (parts.length !== 2) return null;
   const latStr = parts[0]!.trim();
@@ -69,7 +80,7 @@ export function parseNearParam(
 // （5桁=1m は半径検索には過剰）。
 const COORD_PRECISION = 3;
 function formatCoord(n: number): string {
-  // toFixed の余分な末尾 0 を Number 化で除去（34.7 → "34.700" → "34.7"）。
+  // toFixed の余分な末尾 0 を Number 化で除去（12.3 → "12.300" → "12.3"）。
   return String(Number(n.toFixed(COORD_PRECISION)));
 }
 

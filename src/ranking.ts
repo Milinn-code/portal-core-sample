@@ -68,10 +68,27 @@ function isValidRating(rating: number): boolean {
 }
 
 /**
+ * prior が「1〜5 の整数の評価を reviewCount 件集めた合計」として成り立つか検査する。
+ * 整数でないと BigInt に変換できず、範囲外だと全体の平均 C が 1〜5 を外れて補正が意味を持たない。
+ */
+function assertValidPrior(prior: Prior): void {
+  const { ratingSum, reviewCount } = prior;
+  if (!Number.isInteger(ratingSum) || !Number.isInteger(reviewCount)) {
+    throw new RangeError('prior must be integers (ratingSum / reviewCount)');
+  }
+  if (reviewCount <= 0 || ratingSum < reviewCount || ratingSum > 5 * reviewCount) {
+    throw new RangeError('prior must satisfy 0 < reviewCount <= ratingSum <= 5 * reviewCount');
+  }
+}
+
+/**
  * 調整後スコアを分数（分子 / 分母）で返す。
  * (sum + m × S/G) / (n + m) を、分母を払って (sum×G + m×S) / ((n + m)×G) にする。
  */
 function adjustedScore(row: RankedShop, prior: Prior): { num: bigint; den: bigint } {
+  if (!Number.isInteger(row.ratingSum) || !Number.isInteger(row.reviewCount)) {
+    throw new RangeError(`ratingSum / reviewCount must be integers (shopId: ${row.shopId})`);
+  }
   const m = BigInt(PRIOR_WEIGHT);
   const g = BigInt(prior.reviewCount);
   return {
@@ -89,6 +106,8 @@ function adjustedScore(row: RankedShop, prior: Prior): { num: bigint; den: bigin
  * 4. それでも同じなら（「あおい」と「アオイ」など）、店舗 ID 順（入力の順番によらず決まるように）
  */
 export function compareRankedShops(a: RankedShop, b: RankedShop, prior: Prior): number {
+  // buildRanking を通さずに直接呼ばれても、BigInt の変換エラーではなく分かる例外にする
+  assertValidPrior(prior);
   const sa = adjustedScore(a, prior);
   const sb = adjustedScore(b, prior);
   const lhs = sb.num * sa.den;
@@ -141,7 +160,11 @@ export function buildRanking(
   }
 
   const rows: RankedShop[] = [];
+  const seen = new Set<string>();
   for (const shop of shops) {
+    // JOIN の重複などで同じ店舗が2行あると、ランキングの枠を2つ占めてしまうので止める
+    if (seen.has(shop.id)) throw new RangeError(`duplicate shop id: ${shop.id}`);
+    seen.add(shop.id);
     const t = totals.get(shop.id);
     if (!t || t.count < MIN_REVIEW_COUNT) continue;
     // ここで plan を落とす。以降の並べ替えはプランを知らない。
@@ -156,9 +179,7 @@ export function buildRanking(
     });
   }
   if (rows.length === 0) return [];
-  if (prior.reviewCount <= 0) {
-    throw new RangeError('prior.reviewCount must be positive when there are reviewed shops');
-  }
+  assertValidPrior(prior);
 
   const priorMean = prior.ratingSum / prior.reviewCount;
   for (const row of rows) {

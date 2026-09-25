@@ -33,15 +33,24 @@ const ALLOWED_TRANSITIONS: Record<StaffStatus, readonly StaffStatus[]> = {
   transferred: [],
 };
 
-/** current から管理者が選べる遷移先（UI のドロップダウン生成用・防御的コピー）。 */
-export function nextStaffStatuses(current: StaffStatus): StaffStatus[] {
-  return [...(ALLOWED_TRANSITIONS[current] ?? [])];
+/**
+ * 既知の状態か。型は StaffStatus でも、DB や API から来た文字列は実行時には何でも入りうる。
+ * 表を `ALLOWED_TRANSITIONS[s] ?? []` で引くだけだと、'constructor' や '__proto__' のような
+ * Object のプロパティ名で表の外の値が返ってしまうため、先に状態の一覧と照合する。
+ */
+function isStaffStatus(s: string): s is StaffStatus {
+  return (STAFF_STATUSES as readonly string[]).includes(s);
 }
 
-/** from→to が許可された遷移か（サーバ側で fail-closed に弾くためのガード）。同一状態は不許可。 */
+/** current から管理者が選べる遷移先（UI のドロップダウン生成用・防御的コピー）。未知の状態なら空。 */
+export function nextStaffStatuses(current: StaffStatus): StaffStatus[] {
+  return isStaffStatus(current) ? [...ALLOWED_TRANSITIONS[current]] : [];
+}
+
+/** from→to が許可された遷移か（サーバ側で fail-closed に弾くためのガード）。同一状態・未知の状態は不許可。 */
 export function isValidTransition(from: StaffStatus, to: StaffStatus): boolean {
-  if (!(STAFF_STATUSES as readonly string[]).includes(to)) return false;
-  return (ALLOWED_TRANSITIONS[from] ?? []).includes(to);
+  if (!isStaffStatus(from) || !isStaffStatus(to)) return false;
+  return ALLOWED_TRANSITIONS[from].includes(to);
 }
 
 /** leaving（退職予定）へ移すときは、退職予定日（scheduledLeaveAt）の入力が必須。 */

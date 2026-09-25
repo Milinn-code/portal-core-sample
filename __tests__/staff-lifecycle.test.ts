@@ -12,6 +12,16 @@ import {
 } from '../src/staff-lifecycle';
 
 describe('nextStaffStatuses', () => {
+  it('trial からは rookie/active/leaving/left/transferred を選べる', () => {
+    expect([...nextStaffStatuses('trial')].sort()).toEqual(
+      ['rookie', 'active', 'leaving', 'left', 'transferred'].sort(),
+    );
+  });
+  it('rookie からは active/leaving/left/transferred を選べる', () => {
+    expect([...nextStaffStatuses('rookie')].sort()).toEqual(
+      ['active', 'leaving', 'left', 'transferred'].sort(),
+    );
+  });
   it('active からは leaving/left/transferred を選べる', () => {
     expect([...nextStaffStatuses('active')].sort()).toEqual(
       ['leaving', 'left', 'transferred'].sort(),
@@ -45,6 +55,25 @@ describe('isValidTransition', () => {
   it('同一状態への遷移は不許可（呼出側で no-op 扱い）', () =>
     expect(isValidTransition('active', 'active')).toBe(false));
   it('定義外の to を拒否', () => expect(isValidTransition('active', 'bogus' as never)).toBe(false));
+  it('定義外の from を拒否', () => expect(isValidTransition('bogus' as never, 'active')).toBe(false));
+  it("Object のプロパティ名（'constructor' / '__proto__' / 'toString'）でも例外にならず拒否・空", () => {
+    // 型では防げない実行時の文字列（DB や API から来た値）で、表の外の値を引かないこと
+    for (const name of ['constructor', '__proto__', 'toString', 'hasOwnProperty']) {
+      expect(isValidTransition(name as never, 'active')).toBe(false);
+      expect(isValidTransition('active', name as never)).toBe(false);
+      expect(nextStaffStatuses(name as never)).toEqual([]);
+    }
+  });
+});
+
+describe('画面の選択肢とサーバ側のガードが一致する（6×6 の全組み合わせ）', () => {
+  it('isValidTransition(from, to) は、nextStaffStatuses(from) に to が含まれるときだけ true', () => {
+    for (const from of STAFF_STATUSES) {
+      for (const to of STAFF_STATUSES) {
+        expect(isValidTransition(from, to), `${from} → ${to}`).toBe(nextStaffStatuses(from).includes(to));
+      }
+    }
+  });
 });
 
 describe('遷移に伴う項目の更新ルール', () => {

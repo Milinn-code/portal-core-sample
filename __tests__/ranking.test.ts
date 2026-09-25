@@ -4,6 +4,7 @@ import {
   PRIOR_WEIGHT,
   RANKING_LIMIT,
   buildRanking,
+  compareRankedShops,
   type ApprovedReview,
   type Plan,
   type Shop,
@@ -164,6 +165,34 @@ describe('buildRanking: 口コミが少ない店舗の補正（ベイズ平均�
       buildRanking([shop('a')], reviewsOf('a', 5), { prior: { ratingSum: 4.2, reviewCount: 1 } }),
     ).toThrow(RangeError);
   });
+
+  it('prior が「1〜5 の評価の合計」として成り立たなければエラー（全体の平均が 1〜5 の外になる）', () => {
+    for (const prior of [
+      { ratingSum: 10, reviewCount: 0 },
+      { ratingSum: -100, reviewCount: 10 },
+      { ratingSum: 9, reviewCount: 10 }, // 平均 0.9
+      { ratingSum: 51, reviewCount: 10 }, // 平均 5.1
+    ]) {
+      expect(() => buildRanking([shop('a')], reviewsOf('a', 5), { prior }), JSON.stringify(prior)).toThrow(
+        RangeError,
+      );
+    }
+  });
+
+  it('compareRankedShops を直接呼んでも、不正な prior は分かる例外になる（BigInt の変換エラーにしない）', () => {
+    const [row] = buildRanking([shop('a')], reviewsOf('a', 5));
+    expect(() => compareRankedShops(row!, row!, { ratingSum: 4.2, reviewCount: 1 })).toThrow(
+      /prior must be integers/,
+    );
+  });
+});
+
+describe('buildRanking: 入力の検査', () => {
+  it('同じ店舗 ID が2行あればエラー（JOIN の重複などで同じ店舗が2枠を占めないように）', () => {
+    const shops = [shop('a', 'free'), shop('a', 'premium'), shop('b')];
+    const reviews = [...reviewsOf('a', 5), ...reviewsOf('b', 4)];
+    expect(() => buildRanking(shops, reviews)).toThrow(/duplicate shop id: a/);
+  });
 });
 
 describe('buildRanking: 同点のときの並び', () => {
@@ -179,6 +208,21 @@ describe('buildRanking: 同点のときの並び', () => {
       ...reviewsOf('low', 1),
     ];
     expect(ids(buildRanking(shops, reviews))).toEqual(['many', 'few', 'low']);
+  });
+
+  it('浮動小数点では差が出てしまう同点も、分数で比べるので件数順になる', () => {
+    // C = 4 / 3、m = 5 のとき、分数ではどちらも 13/9 で同点:
+    //   few : (2 + 5×4/3) / (1 + 5)   = 13/9
+    //   many: (15 + 5×4/3) / (10 + 5) = 13/9
+    // ところが浮動小数点で計算すると few = 1.4444444444444444、many = 1.4444444444444442 になり、
+    // 小数で比べる実装では件数の少ない few が上に来てしまう。
+    const shops = [shop('few'), shop('many')];
+    const reviews = [...reviewsOf('few', 2), ...reviewsOf('many', 1, 1, 1, 1, 1, 2, 2, 2, 2, 2)];
+    const rows = buildRanking(shops, reviews, { prior: { ratingSum: 4, reviewCount: 3 } });
+
+    const adjusted = Object.fromEntries(rows.map((r) => [r.shopId, r.adjustedRating]));
+    expect(adjusted['few']).toBeGreaterThan(adjusted['many']!); // 小数の値だけ見ると few が上に見える
+    expect(ids(rows)).toEqual(['many', 'few']); // 分数で比べると同点 → 件数の多い many が上
   });
 
   it('スコアも件数も同じなら、店名の五十音順（ひらがな・カタカナ・英字をまとめて比べる）', () => {
