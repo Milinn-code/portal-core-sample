@@ -46,7 +46,7 @@ export function normalizeRadiusKm(raw: string | number | null | undefined): Near
 // 16進(0x..)・指数表記(1e1) を弾く＝navigator.geolocation 由来の通常の10進座標のみを受理する。
 const DECIMAL_RE = /^[+-]?(?:\d+\.?\d*|\.\d+)$/;
 
-// near パラメータの長さの上限。通常の座標（"-90.000000,-180.000000" で 23 文字）には十分で、
+// near パラメータの長さの上限。通常の座標（"-90.000000,-180.000000" で 22 文字）には十分で、
 // 極端に長い入力を正規表現や Number() に渡す前に弾く。
 const MAX_NEAR_LENGTH = 64;
 
