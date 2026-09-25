@@ -1,0 +1,14 @@
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+
+# ローカル環境
+.env
+.env.*
+.DS_Store
+
+# エディタ・エージェントの作業ファイル
+.vscode/
+.idea/
+.claude/
